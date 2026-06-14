@@ -81,7 +81,6 @@ INGEST → UNDERSTAND → PRIORITIZE → ACT
 
 ## 7. Milestones
 
-- **Day 1 (Thu):** PRD, repo, data layer, real reviews ingested ✅
+- **Day 1 (Thu):** PRD, repo, data layer, real reviews ingested 
 - **Day 2 (Fri):** Classification pipeline + golden set + eval harness
-- **Day 3 (Sat):** Clustering, RICE board, report/PRD generation, dashboard
-- **Day 4 (Sun):** Human-in-the-loop polish, scheduled ingestion, deploy (Streamlit Cloud), case-study README
+- **Day 3 (Sun):** Clustering, RICE board, report/PRD generation, dashboard, Human-in-the-loop polish, scheduled ingestion, deploy (Streamlit Cloud), case-study README
