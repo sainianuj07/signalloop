@@ -1,35 +1,46 @@
 """Builds the classification prompt we send to the LLM.
 
-The prompt is a *product decision*, not just code: the categories and the
-severity scale below define what SignalLoop can 'see' in feedback.
+The prompt is a *product decision*: the type DEFINITIONS below (not just the
+names) are what the model actually reads. Bare names -> the model invents its
+own meaning; precise definitions -> consistent, intended labels.
 """
 
-# The 8 feedback types the model is allowed to choose from.
-# Constraining the choices is what keeps our data clean and countable.
-FEEDBACK_TYPES = [
-    "bug",            # something is broken / not working
-    "feature_request",# user wants something that doesn't exist yet
-    "ux_friction",    # it works, but it's confusing or hard to use
-    "pricing",        # cost, plans, billing, value-for-money
-    "praise",         # positive feedback, no action needed
-    "churn_risk",     # user is leaving or threatening to leave
-    "question",       # user asking how to do something (docs/onboarding gap)
-    "other",          # genuinely none of the above
-]
+# Each type's DEFINITION is sent to the model. (Comments aren't — only the
+# prompt string reaches the AI.) churn_risk is deliberately strict: anger is
+# NOT churn; we require an explicit exit signal.
+TYPE_DEFINITIONS = {
+    "bug": "something is broken: crashes, errors, freezes, data loss, or it doesn't work as intended",
+    "feature_request": "the user wants a capability that doesn't exist yet",
+    "ux_friction": "it works, but it's confusing, clunky, slow, or harder to use than it should be",
+    "pricing": "about cost, plans, billing, paywalls, or value-for-money",
+    "praise": "positive feedback with no problem to fix",
+    "churn_risk": ("the user EXPLICITLY signals they are leaving: canceling, uninstalling, "
+                   "switching to a competitor, or demanding a refund. Anger or frustration "
+                   "ALONE is NOT churn_risk — there must be a clear exit signal"),
+    "question": "the user asks how to do something, or is confused about an existing feature (a docs/onboarding gap)",
+    "other": "genuinely none of the above",
+}
+
+# Single source of truth: the allowed labels are exactly the defined ones.
+FEEDBACK_TYPES = list(TYPE_DEFINITIONS.keys())
 
 SEVERITY_SCALE = """1 = minor (cosmetic, mild annoyance)
 2 = moderate (slows the user down, has a workaround)
 3 = major (blocks an important task, no easy workaround)
-4 = critical (app unusable, data loss, or user is churning)"""
+4 = critical (app unusable, data loss, or user is explicitly churning)"""
+
+
+def _format_type_definitions() -> str:
+    return "\n".join(f"- {name}: {desc}" for name, desc in TYPE_DEFINITIONS.items())
 
 
 def build_prompt(review_text: str) -> str:
     """Return the full instruction text for classifying one review."""
-    types_list = ", ".join(FEEDBACK_TYPES)
     return f"""You are an expert product analyst for a B2B SaaS company.
 Classify the user feedback below into a structured label.
 
-Choose `type` from exactly one of: {types_list}
+Choose `type` as exactly ONE of these. Follow the definitions strictly:
+{_format_type_definitions()}
 
 Rate `severity` on this scale:
 {SEVERITY_SCALE}

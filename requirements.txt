@@ -5,3 +5,4 @@ groq>=0.13
 google-genai>=1.0
 python-dotenv>=1.0
 tenacity>=9.0
+scikit-learn>=1.5

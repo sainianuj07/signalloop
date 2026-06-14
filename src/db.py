@@ -115,3 +115,27 @@ def mark_failed(conn: sqlite3.Connection, item_id: int) -> None:
         (item_id,),
     )
     conn.commit()
+
+def clear_themes(conn: sqlite3.Connection) -> None:
+    """Wipe themes and unlink items, so clustering can be re-run cleanly."""
+    conn.execute("DELETE FROM themes")
+    conn.execute("UPDATE feedback_items SET theme_id = NULL")
+    conn.commit()
+
+
+def save_theme(conn: sqlite3.Connection, name: str, summary: str) -> int:
+    """Insert a theme and return its new id."""
+    cur = conn.execute(
+        "INSERT INTO themes (name, summary) VALUES (?, ?)", (name, summary)
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def assign_theme(conn: sqlite3.Connection, item_ids: list[int], theme_id: int) -> None:
+    """Link a batch of items to a theme."""
+    conn.executemany(
+        "UPDATE feedback_items SET theme_id = ? WHERE id = ?",
+        [(theme_id, i) for i in item_ids],
+    )
+    conn.commit()
