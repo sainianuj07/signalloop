@@ -1,0 +1,7 @@
+streamlit>=1.40
+pandas>=2.2
+google-play-scraper>=1.2
+groq>=0.13
+google-genai>=1.0
+python-dotenv>=1.0
+tenacity>=9.0
