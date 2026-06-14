@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 data/*.db
+!data/signalloop.db
 data/*.pkl
 data/raw/
 .venv/

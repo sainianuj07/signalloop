@@ -5,6 +5,7 @@ Run:  streamlit run app/dashboard.py
 Ties the whole pipeline together: ingest -> understand -> prioritize -> act,
 plus a human-in-the-loop review queue that feeds corrections back to the data.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -14,6 +15,14 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+
+# On Streamlit Cloud there is no .env file. Bridge st.secrets -> env vars so
+# os.getenv() (used in src/llm.py) finds the API keys the same way locally and deployed.
+try:
+    for _k, _v in st.secrets.items():
+        os.environ.setdefault(_k, str(_v))
+except Exception:
+    pass
 
 from src.db import get_conn
 from src.classify.prompt import FEEDBACK_TYPES
@@ -76,9 +85,10 @@ c2.metric("Classified by AI", f"{classified} of {total}", help="Items labelled b
 c3.metric("Actionable (non-praise)", f"{actionable}", help="Bugs, friction, requests, churn risk — the roadmap signal.")
 c4.metric("Roadmap opportunities", f"{opps}", themed_pct, help="Themes scored and ranked by RICE.")
 
-tab_overview, tab_road, tab_themes, tab_queue, tab_prd, tab_board = st.tabs(
-    [":material/insights: Overview", ":material/route: Roadmap", ":material/category: Themes",
-     ":material/reviews: Review Queue", ":material/description: PRD", ":material/forum: Boardroom"]
+tab_overview, tab_road, tab_trends, tab_themes, tab_queue, tab_prd, tab_board = st.tabs(
+    [":material/insights: Overview", ":material/route: Roadmap", ":material/trending_up: Trends",
+     ":material/category: Themes", ":material/reviews: Review Queue",
+     ":material/description: PRD", ":material/forum: Boardroom"]
 )
 
 # ===================== OVERVIEW =====================
@@ -164,6 +174,38 @@ with tab_road:
 
         st.dataframe(road, use_container_width=True, hide_index=True)
         st.caption("RICE = (Reach × Impact × Confidence) / Effort.")
+
+# ===================== TRENDS (drift) =====================
+with tab_trends:
+    st.subheader("Theme velocity — what's rising vs cooling")
+    st.caption("This week vs the prior week. A static dashboard shows what feedback *is*; "
+               "this shows what's *changing* — catching emerging issues before they blow up.")
+    from src.drift.monitor import compute_drift
+    anchor, drift = compute_drift()
+    if not drift:
+        st.info("No dated feedback to analyze.")
+    else:
+        ddf = pd.DataFrame(drift)
+        ddf["Direction"] = ddf["change"].apply(
+            lambda c: "Rising" if c > 0 else ("Cooling" if c < 0 else "Flat"))
+        fig = px.bar(ddf.sort_values("change"), x="change", y="theme", orientation="h",
+                     color="Direction", text="change",
+                     color_discrete_map={"Rising": "#00B894", "Cooling": "#E17055", "Flat": "#B2BEC3"},
+                     title=f"Theme change vs last week (week ending {anchor})")
+        fig.update_layout(yaxis_title="", xaxis_title="Δ items vs previous week", height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("##### 📰 Auto-generated weekly brief")
+    brief_path = Path(__file__).resolve().parent.parent / "docs" / "generated" / "weekly_brief.md"
+    if st.button("Generate / refresh weekly brief"):
+        with st.spinner("Writing the State of Feedback brief..."):
+            from src.drift.monitor import generate_brief
+            generate_brief()
+        st.rerun()
+    if brief_path.exists():
+        st.markdown(brief_path.read_text(encoding="utf-8"))
+    else:
+        st.info("No brief yet — click the button above.")
 
 # ===================== THEMES =====================
 with tab_themes:
