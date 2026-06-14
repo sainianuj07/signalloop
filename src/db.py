@@ -139,3 +139,58 @@ def assign_theme(conn: sqlite3.Connection, item_ids: list[int], theme_id: int) -
         [(theme_id, i) for i in item_ids],
     )
     conn.commit()
+
+def clear_opportunities(conn: sqlite3.Connection) -> None:
+    conn.execute("DELETE FROM opportunities")
+    conn.commit()
+
+
+def save_opportunity(conn: sqlite3.Connection, theme_id: int, reach: int,
+                     impact: float, confidence: float, effort: float,
+                     rice_score: float) -> None:
+    conn.execute(
+        """INSERT INTO opportunities
+           (theme_id, reach, impact, confidence, effort, rice_score)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (theme_id, reach, impact, confidence, effort, rice_score),
+    )
+    conn.commit()
+
+
+def get_top_opportunity(conn: sqlite3.Connection):
+    """Return the highest-RICE opportunity joined with its theme (or None)."""
+    return conn.execute(
+        """SELECT o.theme_id, o.reach, o.impact, o.confidence, o.effort, o.rice_score,
+                  t.name, t.summary
+           FROM opportunities o JOIN themes t ON t.id = o.theme_id
+           ORDER BY o.rice_score DESC LIMIT 1"""
+    ).fetchone()
+
+
+def get_opportunity(conn: sqlite3.Connection, theme_id: int):
+    """Return one opportunity+theme by theme id."""
+    return conn.execute(
+        """SELECT o.theme_id, o.reach, o.impact, o.confidence, o.effort, o.rice_score,
+                  t.name, t.summary
+           FROM opportunities o JOIN themes t ON t.id = o.theme_id
+           WHERE o.theme_id = ?""",
+        (theme_id,),
+    ).fetchone()
+
+
+def get_theme_items(conn: sqlite3.Connection, theme_id: int) -> list[sqlite3.Row]:
+    """All feedback items in a theme, worst (highest severity) first."""
+    return conn.execute(
+        """SELECT id, body, fb_type, severity FROM feedback_items
+           WHERE theme_id = ? ORDER BY severity DESC, id ASC""",
+        (theme_id,),
+    ).fetchall()
+
+
+def save_prd(conn: sqlite3.Connection, theme_id: int, prd_markdown: str) -> None:
+    """Store a generated PRD on its opportunity row."""
+    conn.execute(
+        "UPDATE opportunities SET draft_prd = ?, updated_at = datetime('now') WHERE theme_id = ?",
+        (prd_markdown, theme_id),
+    )
+    conn.commit()

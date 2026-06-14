@@ -1,0 +1,8 @@
+# Dashboard theme — a light, colourful base that matches the chart palette.
+[theme]
+base = "light"
+primaryColor = "#6C5CE7"
+backgroundColor = "#EFEBFB"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#241B4B"
+font = "sans serif"

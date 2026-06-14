@@ -20,16 +20,19 @@ PROVIDER = DEFAULT_PROVIDER  # kept for older imports
 
 
 def _is_transient(exc: Exception) -> bool:
-    """True for errors worth retrying: server overload (5xx) and rate limits (429)."""
+    """Retry only genuine transient SERVER errors (5xx / overload / timeout).
+    Rate limits (429) are deliberately NOT retried here — the pipeline handles
+    those visibly with a cooldown, instead of freezing silently."""
     code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-    if code in (429, 500, 502, 503, 504):
+    if code in (500, 502, 503, 504):
         return True
     msg = str(exc).lower()
-    return any(s in msg for s in
-               ("503", "429", "overloaded", "rate limit", "resource_exhausted", "unavailable"))
+    return any(s in msg for s in ("500", "502", "503", "504", "overloaded", "unavailable", "timeout"))
+
 
 
 # Shared retry policy: wait 5s, 10s, 20s, 40s, 60s... up to 6 tries, then give up.
+# Only retries _is_transient errors (server blips) — NOT rate limits.
 _retry = retry(
     retry=retry_if_exception(_is_transient),
     wait=wait_exponential(multiplier=5, min=5, max=60),
@@ -37,13 +40,15 @@ _retry = retry(
     reraise=True,
 )
 
-
-def complete(prompt: str, provider: str | None = None, model: str | None = None) -> str:
+def complete(prompt: str, provider: str | None = None, model: str | None = None,
+             json_mode: bool = True) -> str:
     """Send `prompt` to an AI, return the raw text reply.
-    provider: 'groq' | 'gemini' | 'mock'. model: optional model-id override."""
+    provider: 'groq' | 'gemini' | 'mock'. model: optional model-id override.
+    json_mode: True (default) asks Groq for strict JSON. Set False for free-form
+    prose, e.g. drafting a PRD."""
     provider = (provider or DEFAULT_PROVIDER).lower()
     if provider == "groq":
-        return _groq_complete(prompt, model)
+        return _groq_complete(prompt, model, json_mode)
     elif provider == "gemini":
         return _gemini_complete(prompt, model)
     elif provider == "mock":
@@ -53,15 +58,16 @@ def complete(prompt: str, provider: str | None = None, model: str | None = None)
 
 
 @_retry
-def _groq_complete(prompt: str, model: str | None = None) -> str:
+def _groq_complete(prompt: str, model: str | None = None, json_mode: bool = True) -> str:
     from groq import Groq
 
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    kwargs = {"response_format": {"type": "json_object"}} if json_mode else {}
     response = client.chat.completions.create(
         model=model or "llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
-        response_format={"type": "json_object"},
+        **kwargs,
     )
     return response.choices[0].message.content
 
