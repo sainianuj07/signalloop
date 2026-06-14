@@ -6,7 +6,8 @@
 
 SignalLoop reads raw user feedback — app-store reviews, support tickets, NPS notes — and turns it into a prioritized, evidence-backed roadmap. I built it to answer a question I kept hitting while learning product management: *how does a small team decide what to build when they're drowning in feedback and don't have a PM team to read it all?*
 
-![SignalLoop dashboard](docs/images/dashboard.png)
+<img width="2648" height="1562" alt="dashboard" src="https://github.com/user-attachments/assets/1425bf55-9930-4de5-baf2-bdb3bec75651" />
+
 
 ## Why I built it
 
