@@ -249,23 +249,90 @@ with tab_queue:
 
 # ===================== PRD =====================
 with tab_prd:
-    st.subheader("Generated PRD (citation-verified)")
-    prds = q("""SELECT t.id, t.name, o.draft_prd FROM opportunities o
-                JOIN themes t ON t.id=o.theme_id ORDER BY o.rice_score DESC""")
-    if prds.empty:
-        st.info("Run RICE first, then generate a PRD.")
-    else:
-        choice = st.selectbox("Opportunity", prds["name"].tolist())
-        row = prds[prds["name"] == choice].iloc[0]
-        if st.button("Generate / regenerate PRD"):
-            with st.spinner("Drafting + verifying citations..."):
-                from src.prd.generator import generate
-                generate(int(row["id"]))
-            st.rerun()
-        if row["draft_prd"]:
-            st.markdown(row["draft_prd"])
+    st.subheader("Generate a PRD (citation-verified)")
+
+    mode = st.radio(
+        "What should this PRD be about?",
+        ["Option 1: Target a theme cluster", "Option 2: Target a specific review ID"],
+        horizontal=True, key="prd_mode",
+    )
+
+    target = None          # ("theme", id) or ("review", id)
+    existing_prd = None     # a previously-saved theme PRD, if any
+
+    # ---- Option 1: theme cluster (existing flow) ----
+    if mode.startswith("Option 1"):
+        prds = q("""SELECT t.id, t.name, o.draft_prd FROM opportunities o
+                    JOIN themes t ON t.id=o.theme_id ORDER BY o.rice_score DESC""")
+        if prds.empty:
+            st.info("No themes yet. Run: python -m src.prioritize.rice")
         else:
-            st.info("No PRD yet for this opportunity — click Generate above.")
+            choice = st.selectbox("Theme cluster", prds["name"].tolist(), key="prd_theme")
+            trow = prds[prds["name"] == choice].iloc[0]
+            target = ("theme", int(trow["id"]))
+            existing_prd = trow["draft_prd"]
+
+    # ---- Option 2: specific review id (new flow) ----
+    else:
+        revs = q("SELECT id, fb_type, severity, body FROM feedback_items "
+                 "WHERE status='classified' ORDER BY id")
+        if revs.empty:
+            st.info("No classified reviews yet.")
+        else:
+            id_opts = [int(i) for i in revs["id"].tolist()]
+            labels = {int(r.id): f"#{int(r.id)} · {r.fb_type} · sev {r.severity} · {str(r.body)[:55]}"
+                      for r in revs.itertuples()}
+            rid = st.selectbox("Review ID", id_opts,
+                               format_func=lambda i: labels.get(int(i), f"#{i}"), key="prd_rid")
+            prev = revs[revs["id"] == rid].iloc[0]
+            st.caption(f"Preview of review #{rid}  ·  {prev['fb_type']}  ·  severity {prev['severity']}")
+            st.info(prev["body"])
+            target = ("review", int(rid))
+
+            # show the sibling reviews that will corroborate this PRD
+            tid_df = q("SELECT theme_id FROM feedback_items WHERE id=?", (int(rid),))["theme_id"]
+            tid = tid_df.iloc[0] if not tid_df.empty else None
+            if pd.notna(tid):
+                sibs = q("SELECT id, fb_type, severity, body FROM feedback_items "
+                         "WHERE theme_id=? AND id<>? ORDER BY severity DESC, id ASC LIMIT 6",
+                         (int(tid), int(rid)))
+                if not sibs.empty:
+                    with st.expander(f"{len(sibs)} related reviews from the same theme "
+                                     f"(used as supporting evidence)"):
+                        for s in sibs.itertuples():
+                            st.markdown(f"**[#{int(s.id)}]** ({s.fb_type}, sev {s.severity}): "
+                                        f"{str(s.body)[:220]}")
+                else:
+                    st.caption("No sibling reviews in this theme. The PRD will use this review alone.")
+            else:
+                st.caption("This review is not in a theme. The PRD will use this review alone.")
+
+    # ---- common: optional steering input + submit ----
+    suggestions = st.text_area(
+        "Add specific suggestions, guidelines, or recommendations (Optional)",
+        key="prd_suggestions",
+        placeholder="e.g. focus on Android first, propose a quick win, include a rollout plan",
+    )
+
+    if target is not None and st.button("Generate PRD", type="primary"):
+        with st.spinner("Drafting and verifying citations..."):
+            from src.prd.generator import generate, generate_from_review
+            if target[0] == "theme":
+                md = generate(target[1], suggestions=suggestions)
+            else:
+                md = generate_from_review(target[1], suggestions=suggestions)
+        st.session_state["prd_md"] = md
+        st.session_state["prd_target"] = target
+
+    # ---- show the result (freshly generated for this target, else a saved theme PRD) ----
+    if st.session_state.get("prd_md") and st.session_state.get("prd_target") == target:
+        st.markdown("---")
+        st.markdown(st.session_state["prd_md"])
+    elif existing_prd:
+        st.markdown("---")
+        st.markdown(existing_prd)
+    else:
+        st.caption("Pick a target above and click Generate PRD.")
 
 # ===================== BOARDROOM =====================
 with tab_board:

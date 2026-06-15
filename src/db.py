@@ -187,6 +187,15 @@ def get_theme_items(conn: sqlite3.Connection, theme_id: int) -> list[sqlite3.Row
     ).fetchall()
 
 
+def get_review(conn: sqlite3.Connection, review_id: int):
+    """Fetch a single feedback item by id (for review-targeted PRDs + previews)."""
+    return conn.execute(
+        """SELECT id, body, fb_type, severity, product_area, theme_id
+           FROM feedback_items WHERE id = ?""",
+        (review_id,),
+    ).fetchone()
+
+
 def save_prd(conn: sqlite3.Connection, theme_id: int, prd_markdown: str) -> None:
     """Store a generated PRD on its opportunity row."""
     conn.execute(
