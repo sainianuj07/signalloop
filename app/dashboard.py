@@ -6,6 +6,7 @@ Ties the whole pipeline together: ingest -> understand -> prioritize -> act,
 plus a human-in-the-loop review queue that feeds corrections back to the data.
 """
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -65,6 +66,16 @@ st.markdown(
 
 def q(sql: str, params: tuple = ()) -> pd.DataFrame:
     return pd.read_sql_query(sql, conn, params=params)
+
+
+def prd_verification(md: str):
+    """Pull the citation-verification counts out of a generated PRD's markdown."""
+    def grab(pattern):
+        m = re.search(pattern, md)
+        return int(m.group(1)) if m else None
+    return (grab(r"Citations found:\s*\*\*(\d+)\*\*"),
+            grab(r"Valid[^:\n]*:\s*\*\*(\d+)\*\*"),
+            grab(r"Hallucinated[^:\n]*:\s*\*\*(\d+)\*\*"))
 
 
 # ===================== HEADER + METRICS =====================
@@ -325,12 +336,23 @@ with tab_prd:
         st.session_state["prd_target"] = target
 
     # ---- show the result (freshly generated for this target, else a saved theme PRD) ----
+    display_md = None
     if st.session_state.get("prd_md") and st.session_state.get("prd_target") == target:
-        st.markdown("---")
-        st.markdown(st.session_state["prd_md"])
+        display_md = st.session_state["prd_md"]
     elif existing_prd:
+        display_md = existing_prd
+
+    if display_md:
+        cited, valid, hallucinated = prd_verification(display_md)
+        if cited is not None and hallucinated is not None:
+            if hallucinated == 0:
+                st.success(f"Citation check passed: {valid} of {cited} citations verified, "
+                           f"0 hallucinated. Every quote below is pulled verbatim from the database.")
+            else:
+                st.warning(f"Citation check: {valid} of {cited} verified, "
+                           f"{hallucinated} flagged as hallucinated.")
         st.markdown("---")
-        st.markdown(existing_prd)
+        st.markdown(display_md)
     else:
         st.caption("Pick a target above and click Generate PRD.")
 
